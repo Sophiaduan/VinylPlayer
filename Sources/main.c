@@ -75,7 +75,12 @@ int rghtpb = 0;    // right pushbutton flag
 int runstp = 0;    // run/stop flag  
 int prevlpb = 1; //prev state of left pb
 int prevrpb = 1; //prev state of right pb
-   	   			 		  			 		       
+int pwmout = 0;
+
+/* Create Global Buffer */
+#define BUF_SIZE = 100
+unsigned buffer[BUF_SIZE];
+unsigned int buffcounter = 0;   	   			 		  			 		       
 
 /* Special ASCII characters */
 #define CR 0x0D		// ASCII return 
@@ -137,7 +142,26 @@ void  initializations(void) {
 /* Initialize interrupts */
 	      
 	 RTICTL = 0x31;
-   CRGINT = 0x80;     
+   CRGINT = 0x80;
+
+ /*Initialize PWM here */
+ 	DDRP = 0xFF;
+ 	MODRR = 0x01;
+ 	PWME = 0x01;
+ 	PWMPOL = 0x01;
+ 	PWMCTL = 0x00;
+ 	PWMCAE = 0x00;
+ 	PWMPER0 = 0xFF;
+ 	PWMDTY0 = 0x00;
+ 	PWMCLK = 0x00;
+ 	PWMPRCLK = 0x01;
+
+ /*Initialize TIM here */
+ 	TSCR1 = 0x80;
+ 	TSCR2 = 0x0C;
+ 	TIOS = 0x80;
+ 	TIE = 0x80;
+ 	TC7 = 1500;     
 }
 
 	 		  			 		  		
@@ -175,6 +199,9 @@ void main(void) {
        }
     
        out = ATDDR0H; //output digital signal on PTT0
+       pwmout = out; //pwm output 
+
+
     
        for (i=0; i < 10; i++){
           
@@ -189,6 +216,7 @@ void main(void) {
           
            //shift output bits
            out = out << 1;
+
         }
     
         send_i(LCDCLR);
@@ -245,7 +273,7 @@ interrupt 15 void TIM_ISR(void)
 {
   	// clear TIM CH 7 interrupt flag 
  	TFLG1 = TFLG1 | 0x80; 
- 
+ 	PWMDTY0 = pwmout;
 
 }
 
