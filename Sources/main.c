@@ -67,12 +67,19 @@
 /* All functions after main should be initialized here */
 char inchar(void);
 void outchar(char x);
+void shiftout(char x);
+void lcdwait(void);
+void send_byte(char x);
+void send_i(char x);
+void chgline(char x);
+void print_c(char x);
+void pmsglcd(char[]);
 
 
 /* Variable declarations */
 int leftpb = 0;    // left pushbutton flag
 int rghtpb = 0;    // right pushbutton flag
-int runstp = 0;    // run/stop flag  
+int runstp = 0;    // run/stop flagÂ Â 
 int prevlpb = 1; //prev state of left pb
 int prevrpb = 1; //prev state of right pb
 int pwmout = 0;
@@ -81,10 +88,12 @@ int pwmout = 0;
 #define BUF_SIZE = 100
 unsigned buffer[BUF_SIZE];
 unsigned int buffcounter = 0;   	   			 		  			 		       
+char n = 0;      //temp char to shift numbers into lcd
+
 
 /* Special ASCII characters */
-#define CR 0x0D		// ASCII return 
-#define LF 0x0A		// ASCII new line 
+#define CR 0x0D		// ASCII returnÂ 
+#define LF 0x0A		// ASCII new lineÂ 
 
 /* LCD COMMUNICATION BIT MASKS (note - different than previous labs) */
 #define RS 0x10		// RS pin mask (PTT[4])
@@ -136,8 +145,35 @@ void  initializations(void) {
     ATDCTL2 = 0x80;
     ATDCTL3 = 0x00; 
     ATDCTL4 = 0b11100101;  //8bit res, 16 ATD clock periods, prescaler = 12
+
+
+    SPICR1 = 0b01010000;
+    SPICR2 = 0b00000000;
+
+/* Initialize SPI for baud rate of 6 Mbs */
+   SPIBR = 0b00010000; //(0+1)*2^(1+1) = 4 = baud rate divisor
+
+/* Initialize digital I/O port pins */
+   DDRT = 0b11111111; //outputs = PTT 2,3,4
+   DDRM = 0b11111111; //outputs = PTM 4,5
+
+
    
-   
+/* Initialize the LCD
+     - pull LCDCLK high (idle)
+     - pull R/W' low (write state)
+     - turn on LCD (LCDON instruction)
+     - enable two-line mode (TWOLINE instruction)
+     - clear LCD (LCDCLR instruction)
+     - wait for 2ms so that the LCD can wake up     
+*/ 
+  PTT_PTT4 = 1;   //pull LCDCLK high (connected to PT4)
+  PTT_PTT3 = 0;   //pull R/W' low (connected to PT3)
+  send_i(LCDON); //turn on LCD
+  send_i(TWOLINE); //enable 2-line mode
+  send_i(LCDCLR); //clear LCD                                                                                        
+  lcdwait();  //wait   
+ // pmsglcd("test");
             
 /* Initialize interrupts */
 	      
@@ -164,6 +200,8 @@ void  initializations(void) {
  	TC7 = 1500;     
 }
 
+
+
 	 		  			 		  		
 /*	 		  			 		  		
 ***********************************************************************
@@ -174,7 +212,6 @@ void main(void) {
   	DisableInterrupts
 	initializations(); 		  			 		  		
 	EnableInterrupts;
-
  
  for(;;) {
   
@@ -206,7 +243,7 @@ void main(void) {
        for (i=0; i < 10; i++){
           
            //check output value's 1st bit and output that bit to PTT3
-           if ((out & 0x8000) == 0x8000){
+           if ((out & 0x80) == 0x80){
               PTT_PTT0 = 1; 
            } 
            else {
@@ -218,16 +255,17 @@ void main(void) {
            out = out << 1;
 
         }
+        
+        out = ATDDR0H; //output digital signal on PTT0
     
         send_i(LCDCLR);
-        chgline(LINE1);
         pmsglcd("out = ");
-         n = (react / 100) % 10;
+        n = (out / 100) % 10;
         print_c(n + '0');
-        n = (react / 10) % 10;
+        n = (out / 10) % 10;
         print_c(n + '0');
-        n = react % 10;
-        print_c(n + '0');
+        n = out % 10;
+        print_c(n + '0'); 
     
    }
 
@@ -240,7 +278,7 @@ void main(void) {
 
 
 /*
-***********************************************************************                       
+***********************************************************************   Â Â Â Â   Â  Â Â Â Â Â Â    Â Â  
  RTI interrupt service routine: RTI_ISR
 ************************************************************************
 */
@@ -264,7 +302,7 @@ interrupt 7 void RTI_ISR(void)
 }
 
 /*
-***********************************************************************                       
+***********************************************************************   Â Â Â Â   Â  Â Â Â Â Â Â    Â Â  
   TIM interrupt service routine	  		
 ***********************************************************************
 */
@@ -278,7 +316,7 @@ interrupt 15 void TIM_ISR(void)
 }
 
 /*
-***********************************************************************                       
+***********************************************************************   Â Â Â Â   Â  Â Â Â Â Â Â    Â Â  
   SCI interrupt service routine		 		  		
 ***********************************************************************
 */
@@ -304,12 +342,13 @@ interrupt 20 void SCI_ISR(void)
 void shiftout(char x)
 
 {
- 
+  int i = 0;
   // read the SPTEF bit, continue if bit is 1
   // write data to SPI data register
   // wait for 30 cycles for SPI data to shift out
   while (SPISR_SPTEF != 1){
   }
+   
    SPIDR = x;
    for(i=0;i < 30; i++){
    }
